@@ -13,13 +13,23 @@ DATA = ROOT / "data"
 GPKG = DATA / "processed" / "parks.gpkg"
 OUT = DATA / "processed" / "loss_by_year.csv"
 VERSION = "GFC-2025-v1.13"
-TILE = "00N_020E"
+
+TILES = ["00N_020E", "00N_030E"]
 CANOPY_MIN = 30   # % canopy cover that counts as forest in 2000
 R = 6371008.8     # mean Earth radius in metres
 
 
-def tile_path(layer):
-    return DATA / f"Hansen_{VERSION}_{layer}_{TILE}.tif"
+def tile_path(layer, tile):
+    return DATA / f"Hansen_{VERSION}_{layer}_{tile}.tif"
+
+
+def find_tile(geom):
+    """Name of the tile that fully contains this geometry, or None."""
+    for tile in TILES:
+        with rasterio.open(tile_path("treecover2000", tile)) as src:
+            if box(*src.bounds).contains(geom):
+                return tile
+    return None
 
 
 def row_areas_ha(transform, n_rows):
@@ -52,14 +62,15 @@ def main():
     zones = pd.concat([parks, rings], ignore_index=True)
 
     rows = []
-    with rasterio.open(tile_path("treecover2000")) as tc_src, \
-         rasterio.open(tile_path("lossyear")) as loss_src:
-        tile_box = box(*tc_src.bounds)
-        for _, z in zones.iterrows():
-            if not tile_box.contains(z.geometry):
-                print(f"skip {z['NAME']} ({z['kind']}): not fully inside tile {TILE}")
-                continue
-            print(f"working on {z['NAME']} ({z['kind']}) ...")
+
+    for _, z in zones.iterrows():
+        tile = find_tile(z.geometry)
+        if tile is None:
+            print(f"skip {z['NAME']} ({z['kind']}): not inside any single tile")
+            continue
+        print(f"working on {z['NAME']} ({z['kind']}) in tile {tile} ...")
+        with rasterio.open(tile_path("treecover2000", tile)) as tc_src, \
+             rasterio.open(tile_path("lossyear", tile)) as loss_src:
             rows.append({"zone": z["NAME"], "kind": z["kind"],
                          **zone_stats(z.geometry, tc_src, loss_src)})
 
