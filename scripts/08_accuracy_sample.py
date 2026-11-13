@@ -95,10 +95,14 @@ for c in ["verdict", "before_date", "after_date", "notes"]:
 
 key.to_csv("data/processed/accuracy_key.csv", index=False)
 blind.to_csv("data/processed/accuracy_blind.csv", index=False)
-gpd.GeoDataFrame(blind[["id"]],
+
+pts_out = blind[["id", "lat", "lon"]].copy()
+pts_out["latlon"] = pts_out["lat"].astype(str) + ", " + pts_out["lon"].astype(str)
+gpd.GeoDataFrame(pts_out,
                  geometry=gpd.points_from_xy(blind["lon"], blind["lat"]),
                  crs=4326).to_file("data/processed/accuracy_blind.gpkg",
                                    layer="points", driver="GPKG")
+
 print(key.groupby(["sample_type", "stratum"]).size())
 print("total:", len(key))
 
